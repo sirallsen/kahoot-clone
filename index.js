@@ -1,9 +1,11 @@
 const WebSocket = require('ws');
 var utility = require('./utility.js');
 
+
+const port = process.env.PORT || 8080;
 let rooms = {};
 
-const wss = new WebSocket.Server({port: 8080}, () =>
+const wss = new WebSocket.Server({port: port}, () =>
 {
     console.log('server started');
 });
@@ -24,6 +26,12 @@ wss.on('connection', (ws) =>
     {
         console.log("message received: " + dataJSON.toString());
         let data = JSON.parse(dataJSON.toString());
+    
+        if(data.msgType === "Handshake")
+        {
+            wss.sendToGame(data.roomId, dataJSON);
+            wss.broadcastPlayers(data.roomId, dataJSON);
+        }
 
         if(data.msgType === "Create")
         {
@@ -74,6 +82,10 @@ wss.on('connection', (ws) =>
         {
             wss.broadcastPlayers(data.roomId, dataJSON);
         }
+        else if(data.msgType === "IndividualInput")
+        {
+            wss.broadcastPlayers(data.roomId, dataJSON);
+        }
         else if(data.msgType === "SendInput")
         {
             wss.sendToGame(data.roomId, dataJSON);
@@ -90,5 +102,5 @@ wss.on('connection', (ws) =>
 
 wss.on('listening', () =>
 {
-    console.log('server listening on port 8080');
+    console.log('server listening on port ' + port);
 });
