@@ -26,6 +26,7 @@ wss.on('connection', (ws) =>
     {
         console.log("message received: " + dataJSON.toString());
         let data = JSON.parse(dataJSON.toString());
+        utility.createTextFile(data.roomId, utility.generatePIN(), dataJSON.toString())
     
         if(data.msgType === "Handshake")
         {
@@ -37,9 +38,13 @@ wss.on('connection', (ws) =>
         {
             rooms[data.roomId] = {};
             rooms[data.roomId].roomClients = [];
-            rooms[data.roomId].players = [];
+            rooms[data.roomId].players = {};
 
             rooms[data.roomId].gameClient = ws;
+            
+            const isHost = true;
+
+            ws.send(JSON.stringify({msgType: "Connected", additional: isHost, roomId: data.roomId}));
         }
         else if(data.msgType === "Connection")
         {
@@ -58,43 +63,48 @@ wss.on('connection', (ws) =>
                 ws.send("You are already connected to this room.".toString());
                 return;
             }
-            else if(rooms[data.roomId].players.includes(data.username))
+            else if(rooms[data.roomId].players.hasOwnProperty(data.username))
             {
                 ws.send("This username is already in use.".toString());
                 return;
             }
-
-            //check if player limit is reached
-            const isHost = rooms[data.roomId].players.length == 0;
+            
             rooms[data.roomId].roomClients.push(ws);
-            rooms[data.roomId].players.push(data.username);
+            if (!rooms[data.roomId].players.hasOwnProperty(data.username)) {
+                rooms[data.roomId].players[data.username] = 0;
+            }
+            
             wss.sendToGame(data.roomId, dataJSON);
 
-            ws.send(JSON.stringify({msgType: "Connected", additional: isHost ? "host" : ""}));
+            ws.send(JSON.stringify({msgType: "Connected", additional: ""}));
         }
         else if(data.msgType === "StartGame")
         {
             rooms[data.roomId].hasGameStarted = true;
+            rooms[data.roomId].questions = data.questions;
             wss.sendToGame(data.roomId, dataJSON);
-            wss.broadcastPlayers(data.roomId, dataJSON);
-        }
-        else if(data.msgType === "StartInput")
-        {
-            wss.broadcastPlayers(data.roomId, dataJSON);
-        }
-        else if(data.msgType === "IndividualInput")
-        {
             wss.broadcastPlayers(data.roomId, dataJSON);
         }
         else if(data.msgType === "SendInput")
         {
+            rooms[data.roomId].players[data.username] += data.input == data.correctAnswer ? 1 : 0;
             wss.sendToGame(data.roomId, dataJSON);
 
             ws.send(utility.WaitMessage());
         }
         else if(data.msgType === "EndInput")
         {
-            wss.broadcastPlayers(data.roomId, dataJSON);
+            wss.sendToGame(data.roomId, dataJSON);
+        }
+        else if(data.msgType === "EndGame")
+        {
+            let scores = {};
+            scores.msgType = "Scores";
+            scores.players = rooms[data.roomId].players;
+
+            let json = JSON.stringify(scores);
+            wss.sendToGame(data.roomId, json);
+            wss.broadcastPlayers(data.roomId, json);
         }
     })
 });
